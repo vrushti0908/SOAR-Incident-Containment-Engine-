@@ -1,19 +1,17 @@
 from fastapi import FastAPI
-from app.models.alert import Alert
+from models.alert import Alert
 
-app = FastAPI(title="SOAR Engine")
+app = FastAPI()
 
 alerts = []
 
-@app.get("/")
-def home():
-    return {"message": "SOAR Engine Running"}
-
 @app.post("/alerts")
 def create_alert(alert: Alert):
+
     alerts.append(alert.dict())
+
     return {
-        "status": "received",
+        "message": "Alert received",
         "alert": alert
     }
 
