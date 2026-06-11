@@ -1,5 +1,6 @@
 import requests
 import os
+import sys
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -38,4 +39,9 @@ def check_ip(ip_address: str) -> dict:
     return result
 
 if __name__ == "__main__":
-    check_ip("118.25.6.39")
+    if len(sys.argv) > 1:
+        ip = sys.argv[1]
+    else:
+        ip = "118.25.6.39"
+    
+    check_ip(ip)
