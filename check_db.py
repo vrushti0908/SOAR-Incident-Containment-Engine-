@@ -1,6 +1,18 @@
 import sqlite3
 
 conn = sqlite3.connect("soar.db")
+cursor = conn.cursor()
+
+cursor.execute("SELECT * FROM alerts")
+
+rows = cursor.fetchall()
+
+print(rows)
+
+conn.close()
+'''import sqlite3
+
+conn = sqlite3.connect("soar.db")
 
 cursor = conn.cursor()
 
@@ -10,4 +22,4 @@ cursor.execute(
 
 print(cursor.fetchall())
 
-conn.close()
+conn.close()'''

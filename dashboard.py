@@ -1,102 +1,47 @@
+import sqlite3
 
+conn = sqlite3.connect("soar.db")
+cursor = conn.cursor()
 
-incidents = [
-    {
-        "id": 1,
-        "severity": "High",
-        "status": "Open",
-        "timeline": [
-            "Alert Generated",
-            "Threat Intelligence Completed",
-            "Playbook Executed"
-        ]
-    },
-    {
-        "id": 2,
-        "severity": "Medium",
-        "status": "Investigating",
-        "timeline": [
-            "Alert Generated",
-            "Threat Intelligence Running"
-        ]
-    }
-]
+# Dashboard Counts
+cursor.execute("SELECT COUNT(*) FROM alerts")
+total_alerts = cursor.fetchone()[0]
 
+cursor.execute(
+    "SELECT COUNT(*) FROM alerts WHERE severity='High'"
+)
+high_risk = cursor.fetchone()[0]
 
-def dashboard():
-    print("\n===== SOAR INCIDENT DASHBOARD =====")
-    print(f"Total Incidents : {len(incidents)}")
+cursor.execute(
+    "SELECT COUNT(*) FROM alerts WHERE status='Closed'"
+)
+blocked_ips = cursor.fetchone()[0]
 
-    open_count = sum(1 for i in incidents if i["status"] == "Open")
+print("=" * 40)
+print("      SOAR INCIDENT DASHBOARD")
+print("=" * 40)
 
-    print(f"Open Incidents  : {open_count}")
-    print("==================================\n")
+print(f"Total Alerts      : {total_alerts}")
+print(f"High Risk Alerts  : {high_risk}")
+print(f"Closed Alerts     : {blocked_ips}")
 
+print("\nRecent Incidents")
+print("-" * 40)
 
-def show_incidents():
-    print("\n===== INCIDENT LIST =====")
-
-    for incident in incidents:
-        print(f"""
-Incident ID : {incident['id']}
-Severity    : {incident['severity']}
-Status      : {incident['status']}
-----------------------------
+cursor.execute("""
+SELECT id, source_ip, severity
+FROM alerts
+ORDER BY id DESC
+LIMIT 5
 """)
 
-    print("==========================\n")
+incidents = cursor.fetchall()
 
+for incident in incidents:
+    print(
+        f"ID: {incident[0]} | "
+        f"IP: {incident[1]} | "
+        f"Severity: {incident[2]}"
+    )
 
-def show_timeline():
-    incident_id = int(input("Enter Incident ID: "))
-
-    for incident in incidents:
-        if incident["id"] == incident_id:
-
-            print(f"\n===== TIMELINE FOR INCIDENT {incident_id} =====")
-
-            for step_no, event in enumerate(incident["timeline"], start=1):
-                print(f"{step_no}. {event}")
-
-            print("====================================")
-            return
-
-    print("Incident not found.")
-
-
-def main():
-
-    while True:
-
-        print("""
-====== SOAR MENU ======
-
-1. Dashboard
-2. View Incidents
-3. View Timeline
-4. Exit
-
-=======================
-""")
-
-        choice = input("Select Option: ")
-
-        if choice == "1":
-            dashboard()
-
-        elif choice == "2":
-            show_incidents()
-
-        elif choice == "3":
-            show_timeline()
-
-        elif choice == "4":
-            print("Exiting...")
-            break
-
-        else:
-            print("Invalid Choice")
-
-
-if __name__ == "__main__":
-    main()
+conn.close()

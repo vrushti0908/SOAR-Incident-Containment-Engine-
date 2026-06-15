@@ -5,3 +5,4 @@ class Alert(BaseModel):
     source_ip: str
     severity: str
     timestamp: str
+    status: str = "Open"
