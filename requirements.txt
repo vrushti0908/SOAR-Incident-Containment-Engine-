@@ -250,5 +250,5 @@ widgetsnbextension==4.0.14
 wrapt==1.14.2
 wsproto==1.2.0
 yarl==1.20.1
-
+sqlalchemy
 
