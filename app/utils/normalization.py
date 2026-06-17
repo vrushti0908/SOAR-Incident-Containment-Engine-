@@ -1,3 +1,17 @@
+from dateutil import parser
+
+
+def normalize_timestamp(timestamp):
+
+    try:
+        dt = parser.parse(timestamp)
+
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    except Exception:
+        return timestamp
+
+
 def normalize_alert(data):
 
     source_ip = (
@@ -6,12 +20,11 @@ def normalize_alert(data):
         or data.get("ip")
     )
 
-    if not source_ip:
-        raise ValueError("IP Address Missing")
-
     return {
         "alert_type": data.get("alert_type"),
         "source_ip": source_ip,
         "severity": data.get("severity"),
-        "timestamp": data.get("timestamp")
+        "timestamp": normalize_timestamp(
+            data.get("timestamp")
+        )
     }
