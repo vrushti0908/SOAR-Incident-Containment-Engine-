@@ -1,0 +1,7 @@
+def bruteforce_playbook(alert):
+    if alert["risk_score"] > 80:
+        return "Block IP"
+    elif alert["risk_score"] > 50:
+        return "Create Case"
+    else:
+        return "Log Event"
