@@ -12,6 +12,9 @@ from app.crud.alert_crud import (
     update_alert_status
 )
 
+from app.enrichment.abuseipdb import enrich_alert
+
+
 app = FastAPI(
     title="SOAR Incident Containment Engine",
     description="Security alert ingestion and management API",
@@ -25,17 +28,23 @@ Base.metadata.create_all(bind=engine)
     "/alerts",
     tags=["Alerts"],
     summary="Create Alert",
-    description="Receive, normalize and store security alerts."
+    description="Receive, normalize, enrich and store security alerts."
 )
 def create_new_alert(alert: dict):
 
+    # Step 1: Normalize alert
     normalized_alert = normalize_alert(alert)
+    print("POST IP =", normalized_alert["source_ip"])
+    # Step 2: Enrich alert with Threat Intelligence
+    enriched_alert = enrich_alert(normalized_alert)
 
-    validated_alert = Alert(**normalized_alert)
+    # Step 3: Validate using Pydantic schema
+    validated_alert = Alert(**enriched_alert)
 
     db = SessionLocal()
 
     try:
+
         created_alert = create_alert(
             db,
             {
@@ -43,13 +52,38 @@ def create_new_alert(alert: dict):
                 "source_ip": str(validated_alert.source_ip),
                 "severity": validated_alert.severity,
                 "timestamp": validated_alert.timestamp,
-                "status": validated_alert.status
+                "status": validated_alert.status,
+
+                # Threat Intelligence Fields
+                "risk_score": enriched_alert.get(
+                    "risk_score", 0
+                ),
+                "abuse_confidence_score": enriched_alert.get(
+                    "abuse_confidence_score", 0
+                ),
+                "total_reports": enriched_alert.get(
+                    "total_reports", 0
+                ),
+                "country": enriched_alert.get(
+                    "country", "Unknown"
+                ),
+                "isp": enriched_alert.get(
+                    "isp", "Unknown"
+                )
             }
         )
 
         return {
             "message": "Alert stored successfully",
-            "alert_id": created_alert.id
+            "alert_id": created_alert.id,
+            "alert_type": validated_alert.alert_type,
+            "source_ip": validated_alert.source_ip,
+            "risk_score": enriched_alert.get(
+                "risk_score", 0
+            ),
+            "country": enriched_alert.get(
+                "country", "Unknown"
+            )
         }
 
     finally:
@@ -84,6 +118,7 @@ def get_alert(alert_id: int):
     db = SessionLocal()
 
     try:
+
         alert = get_alert_by_id(db, alert_id)
 
         if not alert:
@@ -104,11 +139,15 @@ def get_alert(alert_id: int):
     summary="Update Alert Status",
     description="Update the status of an existing alert."
 )
-def update_status(alert_id: int, data: StatusUpdate):
+def update_status(
+    alert_id: int,
+    data: StatusUpdate
+):
 
     db = SessionLocal()
 
     try:
+
         alert = update_alert_status(
             db,
             alert_id,
@@ -121,7 +160,20 @@ def update_status(alert_id: int, data: StatusUpdate):
                 detail="Alert not found"
             )
 
-        return alert
+        return {
+            "message": "Status updated successfully",
+            "alert": alert
+        }
 
     finally:
         db.close()
+
+
+@app.get("/")
+def root():
+
+    return {
+        "project": "SOAR Incident Containment Engine",
+        "version": "1.0.0",
+        "status": "Running"
+    }
