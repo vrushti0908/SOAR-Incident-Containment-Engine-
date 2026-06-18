@@ -6,3 +6,6 @@ class Alert(BaseModel):
     severity: str
     timestamp: str
     status: str = "Open"
+
+class StatusUpdate(BaseModel):
+    status: str
