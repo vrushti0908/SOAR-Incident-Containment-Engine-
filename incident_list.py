@@ -1,38 +1,64 @@
-incidents = [
-    {
-        "id": 1,
-        "alert_type": "Malware",
-        "risk_score": 90,
-        "status": "Open"
-    },
-    {
-        "id": 2,
-        "alert_type": "Brute Force",
-        "risk_score": 65,
-        "status": "Investigating"
-    },
-    {
-        "id": 3,
-        "alert_type": "Phishing",
-        "risk_score": 40,
-        "status": "Closed"
-    }
-]
+import sqlite3
 
-print("=" * 60)
-print("SOAR INCIDENT LIST")
-print("=" * 60)
+conn = sqlite3.connect("soar.db")
+cursor = conn.cursor()
 
-print(f"{'ID':<5}{'Alert Type':<20}{'Risk Score':<15}{'Status'}")
-print("-" * 60)
+print("\n===== ALL ALERTS IN DATABASE =====\n")
 
-for incident in incidents:
-    print(
-        f"{incident['id']:<5}"
-        f"{incident['alert_type']:<20}"
-        f"{incident['risk_score']:<15}"
-        f"{incident['status']}"
-    )
+cursor.execute("""
+SELECT
+id,
+alert_type,
+source_ip,
+risk_score,
+status
+FROM alerts
+ORDER BY id
+""")
 
-print("-" * 60)
-print(f"Total Incidents: {len(incidents)}")
+rows = cursor.fetchall()
+
+for row in rows:
+    print(row)
+
+print("\n===============================\n")
+
+incident_id = int(input("Enter Incident ID: "))
+
+cursor.execute("""
+SELECT
+id,
+alert_type,
+source_ip,
+risk_score,
+status,
+country,
+isp
+FROM alerts
+WHERE id = ?
+""", (incident_id,))
+
+incident = cursor.fetchone()
+
+if incident:
+
+
+    print("=" * 50)
+    print("SOAR INCIDENT DETAILS")
+    print("=" * 50)
+
+    print(f"Incident ID   : {incident[0]}")
+    print(f"Alert Type    : {incident[1]}")
+    print(f"Source IP     : {incident[2]}")
+    print(f"Risk Score    : {incident[3]}")
+    print(f"Status        : {incident[4]}")
+    print(f"Country       : {incident[5]}")
+    print(f"ISP           : {incident[6]}")
+
+    print("=" * 50)
+
+
+else:
+    print("Incident not found")
+
+conn.close()
