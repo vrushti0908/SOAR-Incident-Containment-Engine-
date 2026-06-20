@@ -57,13 +57,7 @@ def create_new_alert(alert: dict):
                 # Threat Intelligence Fields
                 "risk_score": enriched_alert.get(
                     "risk_score", 0
-                ),
-                "abuse_confidence_score": enriched_alert.get(
-                    "abuse_confidence_score", 0
-                ),
-                "total_reports": enriched_alert.get(
-                    "total_reports", 0
-                ),
+                  ),
                 "country": enriched_alert.get(
                     "country", "Unknown"
                 ),
