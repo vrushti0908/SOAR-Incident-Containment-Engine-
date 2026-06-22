@@ -15,3 +15,4 @@ class AlertDB(Base):
     risk_score = Column(Integer, default=0)
     country = Column(String)
     isp = Column(String)
+    action = Column(String)
