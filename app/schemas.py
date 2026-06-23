@@ -17,3 +17,5 @@ class Alert(BaseModel):
 
 class StatusUpdate(BaseModel):
     status: str
+
+

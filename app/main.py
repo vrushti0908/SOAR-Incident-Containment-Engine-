@@ -1,7 +1,10 @@
 from fastapi import FastAPI, HTTPException
+from datetime import datetime
 
 from app.schemas import Alert, StatusUpdate
 from app.utils.normalization import normalize_alert
+from app.utils.normalization import normalize_timestamp
+
 
 from app.models.database import Base, engine, SessionLocal
 
@@ -13,6 +16,7 @@ from app.crud.alert_crud import (
 )
 
 from app.enrichment.abuseipdb import enrich_alert
+from engine import execute_playbook
 
 
 app = FastAPI(
@@ -32,13 +36,29 @@ Base.metadata.create_all(bind=engine)
 )
 def create_new_alert(alert: dict):
 
-    # Step 1: Normalize alert
     normalized_alert = normalize_alert(alert)
+
     print("POST IP =", normalized_alert["source_ip"])
-    # Step 2: Enrich alert with Threat Intelligence
+
+    # Step 2: Enrich alert
     enriched_alert = enrich_alert(normalized_alert)
 
-    # Step 3: Validate using Pydantic schema
+    # Step 3: Execute Playbook
+    playbook_action = execute_playbook(enriched_alert)
+
+    # Step 4: Add action
+    enriched_alert["action"] = playbook_action
+
+    # Step 5: Fix timestamp if missing
+    if not enriched_alert.get("timestamp"):
+        enriched_alert["timestamp"] = datetime.now().strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+
+    print("Normalized Alert:", normalized_alert)
+    print("Enriched Alert:", enriched_alert)
+
+    # Step 6: Validate
     validated_alert = Alert(**enriched_alert)
 
     db = SessionLocal()
@@ -53,17 +73,10 @@ def create_new_alert(alert: dict):
                 "severity": validated_alert.severity,
                 "timestamp": validated_alert.timestamp,
                 "status": validated_alert.status,
-
-                # Threat Intelligence Fields
-                "risk_score": enriched_alert.get(
-                    "risk_score", 0
-                  ),
-                "country": enriched_alert.get(
-                    "country", "Unknown"
-                ),
-                "isp": enriched_alert.get(
-                    "isp", "Unknown"
-                )
+                "risk_score": enriched_alert.get("risk_score", 0),
+                "country": enriched_alert.get("country", "Unknown"),
+                "isp": enriched_alert.get("isp", "Unknown"),
+                "action": playbook_action
             }
         )
 
@@ -72,16 +85,14 @@ def create_new_alert(alert: dict):
             "alert_id": created_alert.id,
             "alert_type": validated_alert.alert_type,
             "source_ip": validated_alert.source_ip,
-            "risk_score": enriched_alert.get(
-                "risk_score", 0
-            ),
-            "country": enriched_alert.get(
-                "country", "Unknown"
-            )
+            "risk_score": enriched_alert.get("risk_score", 0),
+            "country": enriched_alert.get("country", "Unknown"),
+            "action": playbook_action
         }
 
     finally:
         db.close()
+
 
 
 @app.get(
