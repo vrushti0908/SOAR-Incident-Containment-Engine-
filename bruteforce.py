@@ -4,7 +4,10 @@ firewall = FirewallSimulator()
 
 def bruteforce_playbook(alert):
 
-    if alert["risk_score"] > 80:
+    risk_score = alert.get("risk_score", 0)
+    failed_attempts = alert.get("failed_attempts", 0)
+
+    if risk_score > 80 or failed_attempts > 20:
 
         firewall.block_ip(
             alert["source_ip"]
@@ -12,7 +15,7 @@ def bruteforce_playbook(alert):
 
         return "Block IP"
 
-    elif alert["risk_score"] > 50:
+    elif risk_score > 50 or failed_attempts > 10:
 
         return "Create bruteforce Case"
 

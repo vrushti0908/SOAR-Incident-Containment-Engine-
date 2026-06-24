@@ -16,3 +16,4 @@ class AlertDB(Base):
     country = Column(String)
     isp = Column(String)
     action = Column(String)
+    failed_attempts = Column(Integer, default=0)

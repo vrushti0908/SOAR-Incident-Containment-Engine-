@@ -48,7 +48,7 @@ def get_blocked_ips():
 
     finally:
         db.close()
-        
+
 @app.post(
     "/alerts",
     tags=["Alerts"],
@@ -97,7 +97,8 @@ def create_new_alert(alert: dict):
                 "risk_score": enriched_alert.get("risk_score", 0),
                 "country": enriched_alert.get("country", "Unknown"),
                 "isp": enriched_alert.get("isp", "Unknown"),
-                "action": playbook_action
+                "action": playbook_action,
+                "failed_attempts": alert.get("failed_attempts", 0)
             }
         )
 
@@ -108,7 +109,8 @@ def create_new_alert(alert: dict):
             "source_ip": validated_alert.source_ip,
             "risk_score": enriched_alert.get("risk_score", 0),
             "country": enriched_alert.get("country", "Unknown"),
-            "action": playbook_action
+            "action": playbook_action,
+            "failed_attempts": alert.get("failed_attempts", 0)
         }
 
     finally:
