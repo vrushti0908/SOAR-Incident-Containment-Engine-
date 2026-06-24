@@ -81,7 +81,58 @@ Actions:
 5. Notify SOC analyst
 
 ---
+### 6. Threat Intelligence Layer
 
+[#6-threat-intelligence-layer](#6-threat-intelligence-layer)
+
+Purpose:
+
+Provides enrichment data to the Playbook Engine so it can make 
+informed decisions before executing containment actions. This 
+layer is called by the Brute Force Playbook (Step 2) and Malware 
+Playbook (Step 2) to evaluate threat severity.
+
+Components:
+
+- **AbuseIPDB Integration** — Retrieves community-reported abuse 
+  score, total reports, and country for a given IP.
+- **VirusTotal Integration** — Checks the IP against 70+ antivirus 
+  engines for malicious/suspicious detections.
+- **Geolocation Lookup** — Identifies city, country, ISP, and 
+  timezone of the source IP for attack attribution.
+- **Risk Scoring Engine** — Combines all three sources into a 
+  single weighted risk score (0-100) and classifies it as LOW, 
+  MEDIUM, HIGH, or CRITICAL.
+
+Example Output:
+{
+
+"ip": "118.25.6.39",
+
+"final_risk_score": 87,
+
+"risk_level": "CRITICAL",
+
+"abuse_score": 100,
+
+"vt_malicious": 12,
+
+"location": "Shenzhen, China",
+
+"org": "AS45090 Tencent Cloud"
+
+}
+Folder Location: `app/enrichment/`
+
+Files:
+
+- `abuseipdb.py`
+- `virustotal.py`
+- `geolocation.py`
+- `threat_intelligence_service.py`
+- `risk_scorer.py`
+
+---
 ## Folder Structure
 
 ```text
@@ -95,8 +146,6 @@ playbooks/
 
 ## Future Enhancements
 
-* AbuseIPDB Integration
-* VirusTotal Integration
 * AWS Security Group Automation
 * Case Management Dashboard
 * Role-Based Access Control (RBAC)
