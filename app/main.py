@@ -17,6 +17,11 @@ from app.crud.alert_crud import (
 
 from app.enrichment.abuseipdb import enrich_alert
 from engine import execute_playbook
+from app.models.database import SessionLocal
+from app.models.firewall_model import BlockedIP
+
+
+
 
 
 app = FastAPI(
@@ -27,7 +32,23 @@ app = FastAPI(
 
 Base.metadata.create_all(bind=engine)
 
+@app.get(
+    "/blocked_ips",
+    tags=["Firewall"],
+    summary="Get Blocked IPs"
+)
+def get_blocked_ips():
 
+    db = SessionLocal()
+
+    try:
+        blocked_ips = db.query(BlockedIP).all()
+
+        return blocked_ips
+
+    finally:
+        db.close()
+        
 @app.post(
     "/alerts",
     tags=["Alerts"],
