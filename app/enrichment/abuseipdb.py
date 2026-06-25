@@ -73,6 +73,5 @@ def enrich_alert(alert: dict):
     alert["risk_level"] = enrichment["risk_level"]
     alert["country"] = enrichment["country"]
     alert["isp"] = enrichment["isp"]
-    alert["risk_score"] = 95
 
     return alert
