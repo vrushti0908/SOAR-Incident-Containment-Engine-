@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from datetime import datetime
+import time
 
 from app.schemas import Alert, StatusUpdate
 from app.utils.normalization import normalize_alert
@@ -15,10 +16,17 @@ from app.crud.alert_crud import (
     update_alert_status
 )
 
-from app.enrichment.abuseipdb import enrich_alert
+#from app.enrichment.abuseipdb import enrich_alert
+#from app.enrichment.virustotal import enrich_alert as vt_enrich_alert
+from app.enrichment.threat_intelligence_service import enrich_alert
 from engine import execute_playbook
 from app.models.database import SessionLocal
 from app.models.firewall_model import BlockedIP
+from app.models.host_isolation_model import IsolatedHost
+from logger import log_action
+
+# SLA from the project brief: full alert -> containment pipeline must finish under this
+MTTR_SLA_SECONDS = 5.0
 
 
 
@@ -49,6 +57,24 @@ def get_blocked_ips():
     finally:
         db.close()
 
+
+@app.get(
+    "/isolated_hosts",
+    tags=["EDR"],
+    summary="Get Isolated Hosts"
+)
+def get_isolated_hosts():
+
+    db = SessionLocal()
+
+    try:
+        isolated_hosts = db.query(IsolatedHost).all()
+
+        return isolated_hosts
+
+    finally:
+        db.close()
+
 @app.post(
     "/alerts",
     tags=["Alerts"],
@@ -57,12 +83,16 @@ def get_blocked_ips():
 )
 def create_new_alert(alert: dict):
 
+    # MTTR timer starts the instant the alert is received
+    start_time = time.perf_counter()
+
     normalized_alert = normalize_alert(alert)
 
     print("POST IP =", normalized_alert["source_ip"])
 
     # Step 2: Enrich alert
     enriched_alert = enrich_alert(normalized_alert)
+    #enriched_alert = vt_enrich_alert(enriched_alert)
 
     # Step 3: Execute Playbook
     playbook_action = execute_playbook(enriched_alert)
@@ -82,6 +112,10 @@ def create_new_alert(alert: dict):
     # Step 6: Validate
     validated_alert = Alert(**enriched_alert)
 
+    # MTTR timer stops once the containment decision/action has run
+    elapsed_seconds = round(time.perf_counter() - start_time, 3)
+    within_sla = elapsed_seconds < MTTR_SLA_SECONDS
+
     db = SessionLocal()
 
     try:
@@ -98,8 +132,17 @@ def create_new_alert(alert: dict):
                 "country": enriched_alert.get("country", "Unknown"),
                 "isp": enriched_alert.get("isp", "Unknown"),
                 "action": playbook_action,
-                "failed_attempts": alert.get("failed_attempts", 0)
+                "failed_attempts": alert.get("failed_attempts", 0),
+                "mttr_seconds": elapsed_seconds
+               
             }
+        )
+
+        log_action(
+            f"Alert {created_alert.id} ({validated_alert.alert_type}) "
+            f"risk={enriched_alert.get('risk_score', 0)} "
+            f"-> {playbook_action} in {elapsed_seconds}s "
+            f"(SLA {'met' if within_sla else 'MISSED'})"
         )
 
         return {
@@ -110,7 +153,13 @@ def create_new_alert(alert: dict):
             "risk_score": enriched_alert.get("risk_score", 0),
             "country": enriched_alert.get("country", "Unknown"),
             "action": playbook_action,
-            "failed_attempts": alert.get("failed_attempts", 0)
+            "failed_attempts": alert.get("failed_attempts", 0),
+            "mttr_seconds": elapsed_seconds,
+            "within_sla": within_sla,
+            "vt_malicious": enriched_alert.get("vt_malicious", 0),
+            "vt_suspicious": enriched_alert.get("vt_suspicious", 0),
+            "vt_reputation": enriched_alert.get("vt_reputation", 0)
+
         }
 
     finally:
