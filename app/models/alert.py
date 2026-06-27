@@ -19,8 +19,9 @@ class AlertDB(Base):
     failed_attempts = Column(Integer, default=0)
     mttr_seconds = Column(Float, default=0.0)
 
+    # VirusTotal + geolocation enrichment (threat_intelligence_service)
     vt_malicious = Column(Integer, default=0)
     vt_suspicious = Column(Integer, default=0)
-    vt_harmless = Column(Integer, default=0)
-    vt_undetected = Column(Integer, default=0)
     vt_reputation = Column(Integer, default=0)
+    city = Column(String, default="Unknown")
+    organization = Column(String, default="Unknown")

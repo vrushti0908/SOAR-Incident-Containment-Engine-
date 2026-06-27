@@ -9,12 +9,15 @@ from app.utils.normalization import normalize_timestamp
 
 from app.models.database import Base, engine, SessionLocal
 from app.models.user import User
+from app.models.approval_model import PendingApproval
 from app.auth import (
     hash_password,
     verify_password,
     create_access_token,
     require_role
 )
+from app.models.approval_queue import ApprovalQueue
+from host_isolation import HostIsolator
 
 from app.crud.alert_crud import (
     create_alert,
@@ -22,6 +25,7 @@ from app.crud.alert_crud import (
     get_alert_by_id,
     update_alert_status
 )
+from app.models.alert import AlertDB
 
 #from app.enrichment.abuseipdb import enrich_alert
 #from app.enrichment.virustotal import enrich_alert as vt_enrich_alert
@@ -44,6 +48,9 @@ app = FastAPI(
     description="Security alert ingestion and management API",
     version="1.0.0"
 )
+
+approval_queue = ApprovalQueue()
+isolator = HostIsolator()
 
 Base.metadata.create_all(bind=engine)
 
@@ -96,15 +103,12 @@ def get_blocked_ips():
         db.close()
 
 
-# TEMPORARY: gated here purely to prove the auth chain works end to end.
-# Day 5 replaces this with a real approval gate on playbook execution --
-# this restriction on a read-only endpoint is not the final design.
 @app.get(
     "/isolated_hosts",
     tags=["EDR"],
-    summary="Get Isolated Hosts (senior_analyst only -- temporary RBAC test)"
+    summary="Get Isolated Hosts"
 )
-def get_isolated_hosts(current_user: dict = Depends(require_role("senior_analyst"))):
+def get_isolated_hosts():
 
     db = SessionLocal()
 
@@ -191,6 +195,22 @@ def create_new_alert(alert: dict):
             f"(SLA {'met' if within_sla else 'MISSED'})"
         )
 
+        # The playbook decided this alert needs a human checkpoint instead of
+        # auto-executing. The approval record needs a real alert_id, which
+        # only exists after create_alert() above -- that's why this can't
+        # live inside malware.py itself.
+        approval_id = None
+        if playbook_action == "Pending Approval":
+            approval_id = approval_queue.request_approval(
+                alert_id=created_alert.id,
+                action_type="ISOLATE_HOST",
+                target=enriched_alert.get("pending_host_id", "unknown-host")
+            )
+            log_action(
+                f"Alert {created_alert.id}: ISOLATE_HOST queued as approval #{approval_id} "
+                f"(target={enriched_alert.get('pending_host_id')})"
+            )
+
         return {
             "message": "Alert stored successfully",
             "alert_id": created_alert.id,
@@ -204,7 +224,8 @@ def create_new_alert(alert: dict):
             "within_sla": within_sla,
             "vt_malicious": enriched_alert.get("vt_malicious", 0),
             "vt_suspicious": enriched_alert.get("vt_suspicious", 0),
-            "vt_reputation": enriched_alert.get("vt_reputation", 0)
+            "vt_reputation": enriched_alert.get("vt_reputation", 0),
+            "approval_id": approval_id
 
         }
 
@@ -286,6 +307,137 @@ def update_status(
         return {
             "message": "Status updated successfully",
             "alert": alert
+        }
+
+    finally:
+        db.close()
+
+
+@app.get(
+    "/approvals",
+    tags=["Approvals"],
+    summary="List pending approvals"
+)
+def list_approvals(current_user: dict = Depends(require_role(
+    "soc_analyst", "security_engineer", "senior_analyst"
+))):
+
+    db = SessionLocal()
+
+    try:
+        return db.query(PendingApproval).all()
+
+    finally:
+        db.close()
+
+
+@app.post(
+    "/approvals/{approval_id}/approve",
+    tags=["Approvals"],
+    summary="Approve a pending high-impact action (senior_analyst only)"
+)
+def approve_action(
+    approval_id: int,
+    current_user: dict = Depends(require_role("senior_analyst"))
+):
+
+    db = SessionLocal()
+
+    try:
+        approval = db.query(PendingApproval).filter(
+            PendingApproval.id == approval_id
+        ).first()
+
+        if not approval:
+            raise HTTPException(status_code=404, detail="Approval not found")
+
+        if approval.status != "PENDING":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Approval #{approval_id} is already {approval.status}"
+            )
+
+        # Only now -- after a senior analyst has explicitly signed off --
+        # does the actual containment action run.
+        if approval.action_type == "ISOLATE_HOST":
+            isolator.isolate_host(approval.target)
+
+        approval.status = "APPROVED"
+        approval.reviewed_by = current_user["username"]
+        approval.reviewed_at = str(datetime.now())
+        db.commit()
+
+        related_alert = db.query(AlertDB).filter(
+            AlertDB.id == approval.alert_id
+        ).first()
+        if related_alert:
+            related_alert.action = f"Isolate Host (Approved by {current_user['username']})"
+            related_alert.status = "Resolved"
+            db.commit()
+
+        log_action(
+            f"Approval #{approval_id} APPROVED by {current_user['username']} "
+            f"-> {approval.action_type} on {approval.target}"
+        )
+
+        return {
+            "message": "Action approved and executed",
+            "approval_id": approval_id,
+            "action_type": approval.action_type,
+            "target": approval.target,
+            "reviewed_by": current_user["username"]
+        }
+
+    finally:
+        db.close()
+
+
+@app.post(
+    "/approvals/{approval_id}/reject",
+    tags=["Approvals"],
+    summary="Reject a pending high-impact action (senior_analyst only)"
+)
+def reject_action(
+    approval_id: int,
+    current_user: dict = Depends(require_role("senior_analyst"))
+):
+
+    db = SessionLocal()
+
+    try:
+        approval = db.query(PendingApproval).filter(
+            PendingApproval.id == approval_id
+        ).first()
+
+        if not approval:
+            raise HTTPException(status_code=404, detail="Approval not found")
+
+        if approval.status != "PENDING":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Approval #{approval_id} is already {approval.status}"
+            )
+
+        approval.status = "REJECTED"
+        approval.reviewed_by = current_user["username"]
+        approval.reviewed_at = str(datetime.now())
+        db.commit()
+
+        related_alert = db.query(AlertDB).filter(
+            AlertDB.id == approval.alert_id
+        ).first()
+        if related_alert:
+            related_alert.action = f"Isolation Rejected by {current_user['username']}"
+            db.commit()
+
+        log_action(
+            f"Approval #{approval_id} REJECTED by {current_user['username']}"
+        )
+
+        return {
+            "message": "Action rejected -- host was NOT isolated",
+            "approval_id": approval_id,
+            "reviewed_by": current_user["username"]
         }
 
     finally:
