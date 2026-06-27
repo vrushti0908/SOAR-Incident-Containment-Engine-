@@ -1,13 +1,20 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from datetime import datetime
 import time
 
-from app.schemas import Alert, StatusUpdate
+from app.schemas import Alert, StatusUpdate, LoginRequest
 from app.utils.normalization import normalize_alert
 from app.utils.normalization import normalize_timestamp
 
 
 from app.models.database import Base, engine, SessionLocal
+from app.models.user import User
+from app.auth import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    require_role
+)
 
 from app.crud.alert_crud import (
     create_alert,
@@ -40,6 +47,37 @@ app = FastAPI(
 
 Base.metadata.create_all(bind=engine)
 
+
+@app.post(
+    "/auth/login",
+    tags=["Auth"],
+    summary="Log in and receive a JWT"
+)
+def login(data: LoginRequest):
+
+    db = SessionLocal()
+
+    try:
+        user = db.query(User).filter(User.username == data.username).first()
+
+        if not user or not verify_password(data.password, user.hashed_password):
+            raise HTTPException(
+                status_code=401,
+                detail="Incorrect username or password"
+            )
+
+        token = create_access_token(username=user.username, role=user.role)
+
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "role": user.role
+        }
+
+    finally:
+        db.close()
+
+
 @app.get(
     "/blocked_ips",
     tags=["Firewall"],
@@ -58,12 +96,15 @@ def get_blocked_ips():
         db.close()
 
 
+# TEMPORARY: gated here purely to prove the auth chain works end to end.
+# Day 5 replaces this with a real approval gate on playbook execution --
+# this restriction on a read-only endpoint is not the final design.
 @app.get(
     "/isolated_hosts",
     tags=["EDR"],
-    summary="Get Isolated Hosts"
+    summary="Get Isolated Hosts (senior_analyst only -- temporary RBAC test)"
 )
-def get_isolated_hosts():
+def get_isolated_hosts(current_user: dict = Depends(require_role("senior_analyst"))):
 
     db = SessionLocal()
 
@@ -133,8 +174,13 @@ def create_new_alert(alert: dict):
                 "isp": enriched_alert.get("isp", "Unknown"),
                 "action": playbook_action,
                 "failed_attempts": alert.get("failed_attempts", 0),
-                "mttr_seconds": elapsed_seconds
-               
+                "mttr_seconds": elapsed_seconds,
+                "vt_malicious": enriched_alert.get("vt_malicious", 0),
+                "vt_suspicious": enriched_alert.get("vt_suspicious", 0),
+                "vt_reputation": enriched_alert.get("vt_reputation", 0),
+                "city": enriched_alert.get("city", "Unknown"),
+                "organization": enriched_alert.get("organization", "Unknown")
+
             }
         )
 
