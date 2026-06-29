@@ -1,3 +1,5 @@
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from fastapi import FastAPI, HTTPException, Depends
 from datetime import datetime
 import time
@@ -26,6 +28,7 @@ from app.crud.alert_crud import (
     update_alert_status
 )
 from app.models.alert import AlertDB
+from app.enrichment.abuseipdb import classify_risk
 
 #from app.enrichment.abuseipdb import enrich_alert
 #from app.enrichment.virustotal import enrich_alert as vt_enrich_alert
@@ -48,11 +51,60 @@ app = FastAPI(
     description="Security alert ingestion and management API",
     version="1.0.0"
 )
+app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
 
 approval_queue = ApprovalQueue()
 isolator = HostIsolator()
 
 Base.metadata.create_all(bind=engine)
+
+
+@app.get(
+    "/dashboard/stats",
+    tags=["Dashboard"],
+    summary="Aggregate stats for the dashboard UI"
+)
+def get_dashboard_stats():
+
+    db = SessionLocal()
+
+    try:
+        alerts = db.query(AlertDB).all()
+        total = len(alerts)
+
+        open_cases = sum(1 for a in alerts if (a.status or "Open") == "Open")
+        closed_cases = sum(1 for a in alerts if a.status == "Resolved")
+
+        risk_counts = {"Low": 0, "Medium": 0, "High": 0, "Critical": 0}
+        country_counts = {}
+        for a in alerts:
+            risk_counts[classify_risk(a.risk_score or 0)] += 1
+            code = (a.country or "Unknown").upper()
+            country_counts[code] = country_counts.get(code, 0) + 1
+
+        avg_mttr = round(sum(a.mttr_seconds or 0 for a in alerts) / total, 2) if total else 0
+
+        return {
+            "total_alerts": total,
+            "high_risk_alerts": risk_counts["High"] + risk_counts["Critical"],
+            "open_cases": open_cases,
+            "closed_cases": closed_cases,
+            "mttr": avg_mttr,
+            "critical_count": risk_counts["Critical"],
+            "high_count": risk_counts["High"],
+            "medium_count": risk_counts["Medium"],
+            "low_count": risk_counts["Low"],
+            "blocked_ips": db.query(BlockedIP).count(),
+            "isolated_hosts": db.query(IsolatedHost).count(),
+            "pending_approvals": db.query(PendingApproval).filter(
+                PendingApproval.status == "PENDING"
+            ).count(),
+            "intel_queries": total,
+            "alerts_by_country": country_counts
+        }
+
+    finally:
+        db.close()
 
 
 @app.post(
@@ -444,11 +496,14 @@ def reject_action(
         db.close()
 
 
-@app.get("/")
+'''@app.get("/")
 def root():
 
     return {
         "project": "SOAR Incident Containment Engine",
         "version": "1.0.0",
         "status": "Running"
-    }
+    }'''
+@app.get("/", include_in_schema=False)
+def home():
+    return FileResponse("frontend/index.html")

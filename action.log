@@ -12,3 +12,10 @@
 2026-06-27 19:13:52.058046 - Alert 3 (malware) risk=100 -> Pending Approval in 1.622s (SLA met)
 2026-06-27 19:13:52.088600 - Alert 3: ISOLATE_HOST queued as approval #1 (target=185.220.101.1)
 2026-06-27 19:25:16.360109 - Approval #1 APPROVED by senior1 -> ISOLATE_HOST on 185.220.101.1
+2026-06-29 17:51:47.598888 - Alert 4 (Malware) risk=100 -> Pending Approval in 1.768s (SLA met)
+2026-06-29 17:51:47.613764 - Alert 4: ISOLATE_HOST queued as approval #2 (target=185.220.101.1)
+2026-06-29 17:57:26.214548 - Alert 5 (Brute Force) risk=0 -> Unknown Alert Type in 1.711s (SLA met)
+2026-06-29 18:03:38.373068 - Alert 6 (bruteforce) risk=0 -> Log Event in 2.01s (SLA met)
+2026-06-29 18:04:04.418907 - Alert 7 (bruteforce) risk=0 -> Log Event in 2.364s (SLA met)
+2026-06-29 18:05:23.919861 - Alert 8 (bruteforce) risk=0 -> Block IP in 1.851s (SLA met)
+2026-06-29 18:09:05.887483 - Alert 9 (bruteforce) risk=0 -> Block IP in 2.241s (SLA met)
