@@ -3,10 +3,13 @@ from bruteforce import bruteforce_playbook
 
 def execute_playbook(alert):
 
+    # Normalize away spaces/underscores/casing so "Brute Force", "brute_force",
+    # and "bruteforce" all route correctly -- a real SIEM or a human typing a
+    # test alert will send all of these.
     alert_type = alert.get(
         "alert_type",
         ""
-    ).lower()
+    ).lower().replace(" ", "").replace("_", "").replace("-", "")
 
     if alert_type == "malware":
         return malware_playbook(alert)
