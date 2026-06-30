@@ -26,5 +26,11 @@ def normalize_alert(data):
         "severity": data.get("severity"),
         "timestamp": normalize_timestamp(
             data.get("timestamp")
-        )
+        ),
+        # Playbook-specific fields. failed_attempts in particular was being
+        # silently dropped here before -- bruteforce_playbook() always saw 0
+        # regardless of what the SIEM/caller actually sent, so blocking
+        # never triggered off failed_attempts even when it should have.
+        "failed_attempts": data.get("failed_attempts", 0),
+        "host_id": data.get("host_id")
     }

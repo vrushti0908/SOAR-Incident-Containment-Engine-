@@ -66,27 +66,69 @@ def analyze_ip(ip_address: str) -> dict:
 
 def enrich_alert(alert: dict) -> dict:
     """
-    Enrich an alert using all threat intelligence sources.
+    Enrich an alert using all threat intelligence sources
+    and calculate the final SOAR risk score.
     """
 
     threat_data = analyze_ip(alert["source_ip"])
 
-    # AbuseIPDB
-    alert["risk_score"] = threat_data.get("risk_score", 0)
+    # -----------------------------
+    # Copy Threat Intelligence Data
+    # -----------------------------
+
     alert["country"] = threat_data.get("country", "Unknown")
     alert["isp"] = threat_data.get("isp", "Unknown")
 
-    # VirusTotal
     alert["vt_malicious"] = threat_data.get("vt_malicious", 0)
     alert["vt_suspicious"] = threat_data.get("vt_suspicious", 0)
     alert["vt_harmless"] = threat_data.get("vt_harmless", 0)
     alert["vt_undetected"] = threat_data.get("vt_undetected", 0)
     alert["vt_reputation"] = threat_data.get("vt_reputation", 0)
 
-    # Geolocation
     alert["city"] = threat_data.get("city", "Unknown")
     alert["timezone"] = threat_data.get("timezone", "Unknown")
     alert["organization"] = threat_data.get("organization", "Unknown")
+
+    # -----------------------------
+    # Calculate Final Risk Score
+    # -----------------------------
+
+    failed_attempts = alert.get("failed_attempts", 0)
+
+    risk_score = threat_data.get("risk_score", 0)
+
+    # Increase score based on brute-force behaviour
+    if alert["alert_type"].lower() == "brute force":
+
+        if failed_attempts >= 50:
+
+            risk_score = max(risk_score, 100)
+
+        elif failed_attempts >= 20:
+
+            risk_score = max(risk_score, 90)
+
+        elif failed_attempts >= 10:
+
+            risk_score = max(risk_score, 70)
+
+        elif failed_attempts >= 5:
+
+            risk_score = max(risk_score, 50)
+
+        else:
+
+            risk_score = max(risk_score, 20)
+
+    # Malware alerts
+    elif alert["alert_type"].lower() == "malware":
+
+        risk_score = max(
+            risk_score,
+            85 + threat_data.get("vt_malicious", 0)
+        )
+
+    alert["risk_score"] = min(risk_score, 100)
 
     return alert
 
