@@ -25,3 +25,8 @@ class AlertDB(Base):
     vt_reputation = Column(Integer, default=0)
     city = Column(String, default="Unknown")
     organization = Column(String, default="Unknown")
+
+    # MITRE ATT&CK technique labelling
+    mitre_technique_id = Column(String, default="T0000")
+    mitre_technique_name = Column(String, default="Unknown Technique")
+    mitre_tactic = Column(String, default="Unknown")
