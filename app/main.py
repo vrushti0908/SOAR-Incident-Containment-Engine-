@@ -29,6 +29,7 @@ from app.crud.alert_crud import (
 )
 from app.models.alert import AlertDB
 from app.enrichment.abuseipdb import classify_risk
+from app.mitre import get_mitre_info, MITRE_MAPPING
 
 #from app.enrichment.abuseipdb import enrich_alert
 #from app.enrichment.virustotal import enrich_alert as vt_enrich_alert
@@ -235,7 +236,10 @@ def create_new_alert(alert: dict):
                 "vt_suspicious": enriched_alert.get("vt_suspicious", 0),
                 "vt_reputation": enriched_alert.get("vt_reputation", 0),
                 "city": enriched_alert.get("city", "Unknown"),
-                "organization": enriched_alert.get("organization", "Unknown")
+                "organization": enriched_alert.get("organization", "Unknown"),
+                "mitre_technique_id": enriched_alert.get("mitre_technique_id", "T0000"),
+                "mitre_technique_name": enriched_alert.get("mitre_technique_name", "Unknown Technique"),
+                "mitre_tactic": enriched_alert.get("mitre_tactic", "Unknown")
 
             }
         )
@@ -277,7 +281,10 @@ def create_new_alert(alert: dict):
             "vt_malicious": enriched_alert.get("vt_malicious", 0),
             "vt_suspicious": enriched_alert.get("vt_suspicious", 0),
             "vt_reputation": enriched_alert.get("vt_reputation", 0),
-            "approval_id": approval_id
+            "approval_id": approval_id,
+            "mitre_technique_id": enriched_alert.get("mitre_technique_id", "T0000"),
+            "mitre_technique_name": enriched_alert.get("mitre_technique_name", "Unknown Technique"),
+            "mitre_tactic": enriched_alert.get("mitre_tactic", "Unknown")
 
         }
 
@@ -504,6 +511,31 @@ def root():
         "version": "1.0.0",
         "status": "Running"
     }'''
+@app.get(
+    "/mitre",
+    tags=["MITRE ATT&CK"],
+    summary="List all mapped MITRE ATT&CK techniques"
+)
+def list_mitre_techniques():
+    return [
+        {"alert_type": k, **v}
+        for k, v in MITRE_MAPPING.items()
+    ]
+
+
+@app.get(
+    "/mitre/{alert_type}",
+    tags=["MITRE ATT&CK"],
+    summary="Get MITRE ATT&CK technique for a specific alert type"
+)
+def get_mitre_technique(alert_type: str):
+    info = get_mitre_info(alert_type)
+    return {
+        "alert_type": alert_type,
+        **info
+    }
+
+
 @app.get("/", include_in_schema=False)
 def home():
     return FileResponse("frontend/index.html")
