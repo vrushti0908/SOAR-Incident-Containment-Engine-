@@ -1,13 +1,24 @@
-import requests
 import os
-import sys
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
 API_KEY = os.getenv("ABUSEIPDB_API_KEY")
 
-def check_ip(ip_address: str) -> dict:
+
+def classify_risk(score):
+    if score >= 80:
+        return "Critical"
+    elif score >= 50:
+        return "High"
+    elif score >= 20:
+        return "Medium"
+    return "Low"
+
+
+def check_ip(ip_address: str):
+
     try:
         url = "https://api.abuseipdb.com/api/v2/check"
 
@@ -21,43 +32,46 @@ def check_ip(ip_address: str) -> dict:
             "maxAgeInDays": 90
         }
 
-        response = requests.get(url, headers=headers, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        response = requests.get(
+            url,
+            headers=headers,
+            params=params,
+            timeout=10
+        )
 
-        result = {
-            "ip": ip_address,
-            "abuse_score": data["data"]["abuseConfidenceScore"],
-            "total_reports": data["data"]["totalReports"],
-            "country": data["data"]["countryCode"],
-            "isp": data["data"]["isp"]
+        response.raise_for_status()
+
+        data = response.json()["data"]
+
+        score = data.get("abuseConfidenceScore", 0)
+
+        return {
+            "source_ip": ip_address,
+            "risk_score": score,
+            "risk_level": classify_risk(score),
+            "country": data.get("countryCode") or "Unknown",
+            "isp": data.get("isp") or "Unknown"
         }
 
-        print(f"[AbuseIPDB] IP        : {result['ip']}")
-        print(f"[AbuseIPDB] Score     : {result['abuse_score']}")
-        print(f"[AbuseIPDB] Reports   : {result['total_reports']}")
-        print(f"[AbuseIPDB] Country   : {result['country']}")
-
-        return result
-
-    except requests.exceptions.Timeout:
-        print(f"[AbuseIPDB] Error: Request timed out for {ip_address}")
-        return {"ip": ip_address, "abuse_score": 0, "total_reports": 0,
-                "country": "Unknown", "isp": "Unknown", "error": "timeout"}
-
-    except requests.exceptions.ConnectionError:
-        print(f"[AbuseIPDB] Error: No internet connection")
-        return {"ip": ip_address, "abuse_score": 0, "total_reports": 0,
-                "country": "Unknown", "isp": "Unknown", "error": "connection_error"}
-
     except Exception as e:
-        print(f"[AbuseIPDB] Error: {str(e)}")
-        return {"ip": ip_address, "abuse_score": 0, "total_reports": 0,
-                "country": "Unknown", "isp": "Unknown", "error": str(e)}
 
-if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        ip = sys.argv[1]
-    else:
-        ip = "118.25.6.39"
-    check_ip(ip)
+        return {
+            "source_ip": ip_address,
+            "risk_score": 0,
+            "risk_level": "Low",
+            "country": "Unknown",
+            "isp": "Unknown",
+            "error": str(e)
+        }
+
+
+def enrich_alert(alert: dict):
+
+    enrichment = check_ip(alert["source_ip"])
+
+    alert["risk_score"] = enrichment["risk_score"]
+    alert["risk_level"] = enrichment["risk_level"]
+    alert["country"] = enrichment["country"]
+    alert["isp"] = enrichment["isp"]
+
+    return alert
