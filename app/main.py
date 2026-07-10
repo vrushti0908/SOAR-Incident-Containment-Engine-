@@ -1,3 +1,4 @@
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi import FastAPI, HTTPException, Depends
@@ -39,6 +40,10 @@ from app.models.database import SessionLocal
 from app.models.firewall_model import BlockedIP
 from app.models.host_isolation_model import IsolatedHost
 from logger import log_action
+from app.routes.timeline import router as timeline_router
+from app.models.timeline import TimelineEvent
+from app.crud.timeline_crud import add_event
+
 
 # SLA from the project brief: full alert -> containment pipeline must finish under this
 MTTR_SLA_SECONDS = 5.0
@@ -52,6 +57,7 @@ app = FastAPI(
     description="Security alert ingestion and management API",
     version="1.0.0"
 )
+app.include_router(timeline_router)
 app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
 
 approval_queue = ApprovalQueue()
@@ -185,7 +191,7 @@ def create_new_alert(alert: dict):
     start_time = time.perf_counter()
 
     normalized_alert = normalize_alert(alert)
-
+    
     print("POST IP =", normalized_alert["source_ip"])
 
     # Step 2: Enrich alert
@@ -243,7 +249,35 @@ def create_new_alert(alert: dict):
 
             }
         )
-
+        incident_id = f"INC-{created_alert.id}"
+        add_event(
+            db,
+            incident_id,
+            "alert",
+            "Alert Received",
+            f"{validated_alert.alert_type} detected"
+        )
+        add_event(
+            db,
+            incident_id,
+            "enrich",
+            "Threat Intelligence Completed",
+            f"Risk Score {enriched_alert.get('risk_score',0)}"
+        )
+        add_event(
+            db,
+            incident_id,
+            "playbook",
+            "Playbook Executed",
+            playbook_action
+        )
+        add_event(
+            db,
+            incident_id,
+            "action",
+            "Containment Action",
+            playbook_action
+        )
         log_action(
             f"Alert {created_alert.id} ({validated_alert.alert_type}) "
             f"risk={enriched_alert.get('risk_score', 0)} "
@@ -422,6 +456,13 @@ def approve_action(
             isolator.isolate_host(approval.target)
 
         approval.status = "APPROVED"
+        add_event(
+            db,
+            f"INC-{approval.alert_id}",
+            "close",
+            "Incident Approved",
+            f"Approved by {current_user['username']}"
+        )
         approval.reviewed_by = current_user["username"]
         approval.reviewed_at = str(datetime.now())
         db.commit()
@@ -478,6 +519,13 @@ def reject_action(
             )
 
         approval.status = "REJECTED"
+        add_event(
+            db,
+            f"INC-{approval.alert_id}",
+            "action",
+            "Containment Rejected",
+            f"Rejected by {current_user['username']}"
+        )
         approval.reviewed_by = current_user["username"]
         approval.reviewed_at = str(datetime.now())
         db.commit()
@@ -539,3 +587,11 @@ def get_mitre_technique(alert_type: str):
 @app.get("/", include_in_schema=False)
 def home():
     return FileResponse("frontend/index.html")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)

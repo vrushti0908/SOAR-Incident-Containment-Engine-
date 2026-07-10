@@ -1,57 +1,21 @@
-import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell,
-} from "recharts";
+import { useState, useEffect } from "react";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import CardShell from "../components/CardShell";
 
-const alertsOverTime = [
-  { day: "May 16", value: 40 },
-  { day: "May 17", value: 55 },
-  { day: "May 18", value: 35 },
-  { day: "May 19", value: 60 },
-  { day: "May 20", value: 70 },
-  { day: "May 21", value: 45 },
-  { day: "May 22", value: 50 },
-  { day: "May 23", value: 65 },
-];
+const API = "http://127.0.0.1:8000";
 
-const riskDistribution = [
-  { name: "Critical", value: 23, color: "#f04444" },
-  { name: "High", value: 45, color: "#f5a623" },
-  { name: "Medium", value: 36, color: "#f0c419" },
-  { name: "Low", value: 24, color: "#3ecf8e" },
-];
+const RISK_COLORS = {
+  Critical: "#f04444",
+  High: "#f5a623",
+  Medium: "#f0c419",
+  Low: "#3ecf8e",
+};
 
-const topCountries = [
-  { name: "Germany", count: 28 },
-  { name: "Russia", count: 21 },
-  { name: "United States", count: 17 },
-  { name: "China", count: 13 },
-  { name: "Netherlands", count: 9 },
-];
-
-const recentIncidents = [
-  { id: "INC-128", type: "Malware", source: "185.220.101.1", risk: 100, status: "Investigating", updated: "2 min ago" },
-  { id: "INC-127", type: "Brute Force", source: "45.12.56.78", risk: 80, status: "Open", updated: "5 min ago" },
-  { id: "INC-126", type: "Ransomware", source: "91.23.66.10", risk: 95, status: "Investigating", updated: "12 min ago" },
-  { id: "INC-125", type: "Phishing", source: "203.0.113.5", risk: 60, status: "Open", updated: "18 min ago" },
-  { id: "INC-124", type: "Malicious IP", source: "192.168.1.45", risk: 75, status: "Open", updated: "25 min ago" },
-];
-
-const timeline = [
-  { label: "Alert received", time: "10:15:30" },
-  { label: "Threat enrichment (VirusTotal, AbuseIPDB)", time: "10:15:31" },
-  { label: "Playbook triggered: high risk", time: "10:15:32" },
-  { label: "Host isolated", time: "10:15:33" },
-  { label: "Firewall rule added", time: "10:15:34" },
-  { label: "Incident closed", time: "10:15:35" },
-];
-
-const pendingApprovals = [
-  { title: "Host isolation - INC-129", risk: "High risk" },
-  { title: "Firewall block - 203.0.113.77", risk: "High risk" },
-  { title: "Playbook execution - INC-130", risk: "Medium risk" },
-];
+const COUNTRY_NAMES = {
+  US: "United States", CN: "China", RU: "Russia", DE: "Germany",
+  FR: "France", GB: "United Kingdom", NL: "Netherlands", IN: "India",
+  BR: "Brazil", UA: "Ukraine", KR: "South Korea", JP: "Japan",
+};
 
 function riskColor(score) {
   if (score >= 90) return "var(--color-critical)";
@@ -61,50 +25,114 @@ function riskColor(score) {
 }
 
 function statusBadgeStyle(status) {
-  if (status === "Investigating") {
-    return { background: "var(--color-warning-bg)", color: "var(--color-high)" };
-  }
-  return { background: "var(--color-info-bg)", color: "#5fa8e0" };
+  if (status === "Resolved") return { background: "var(--color-success-bg)", color: "var(--color-low)" };
+  if (status === "Open") return { background: "var(--color-info-bg)", color: "#5fa8e0" };
+  return { background: "var(--color-warning-bg)", color: "var(--color-high)" };
 }
 
-function KpiCard({ label, value, trend, trendUp, accent }) {
+function KpiCard({ label, value, accent }) {
   return (
-    <div
-      style={{
-        background: "var(--bg-card)",
-        border: "1px solid var(--border)",
-        borderRadius: 10,
-        padding: "16px 18px",
-        flex: 1,
-        minWidth: 0,
-      }}
-    >
+    <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 10, padding: "16px 18px", flex: 1, minWidth: 0 }}>
       <div style={{ color: "var(--text-secondary)", fontSize: 13, marginBottom: 10 }}>{label}</div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-        <span style={{ fontSize: 26, fontWeight: 600, color: accent || "var(--text-primary)" }}>
-          {value}
-        </span>
-        {trend && (
-          <span style={{ fontSize: 12, color: trendUp ? "var(--color-low)" : "var(--color-critical)" }}>
-            {trendUp ? "\u2191" : "\u2193"} {trend}
-          </span>
-        )}
-      </div>
+      <span style={{ fontSize: 26, fontWeight: 600, color: accent || "var(--text-primary)" }}>{value}</span>
     </div>
   );
 }
 
 export default function DashboardPage() {
+  const [stats, setStats] = useState(null);
+  const [alerts, setAlerts] = useState([]);
+  const [approvals, setApprovals] = useState([]);
+
+  async function loadData() {
+    try {
+      const [s, a] = await Promise.all([
+        fetch(`${API}/dashboard/stats`).then(r => r.json()),
+        fetch(`${API}/alerts`).then(r => r.json()),
+      ]);
+      setStats(s);
+      setAlerts(Array.isArray(a) ? a : []);
+
+      // approvals needs auth token
+      const token = localStorage.getItem("soar_token");
+      if (token) {
+        const ap = await fetch(`${API}/approvals`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }).then(r => r.ok ? r.json() : []);
+        setApprovals(Array.isArray(ap) ? ap.filter(x => x.status === "PENDING") : []);
+      }
+    } catch (e) {
+      console.error("Dashboard load error:", e);
+    }
+  }
+
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(loadData, 6000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Build alerts-over-time data from real alerts
+  const alertsOverTime = (() => {
+    const buckets = {};
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(5, 10);
+      buckets[key] = 0;
+    }
+    alerts.forEach(a => {
+      const key = (a.timestamp || "").slice(5, 10);
+      if (key in buckets) buckets[key]++;
+    });
+    return Object.entries(buckets).map(([day, value]) => ({ day, value }));
+  })();
+
+  // Risk distribution from real stats
+  const riskDistribution = stats ? [
+    { name: "Critical", value: stats.critical_count || 0, color: RISK_COLORS.Critical },
+    { name: "High",     value: stats.high_count || 0,     color: RISK_COLORS.High },
+    { name: "Medium",   value: stats.medium_count || 0,   color: RISK_COLORS.Medium },
+    { name: "Low",      value: stats.low_count || 0,      color: RISK_COLORS.Low },
+  ] : [];
+
+  // Top countries from real stats
+  const topCountries = stats
+    ? Object.entries(stats.alerts_by_country || {})
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([code, count]) => ({ name: COUNTRY_NAMES[code] || code, count }))
+    : [];
+
+  const recentAlerts = [...alerts].sort((a, b) => (b.id ?? 0) - (a.id ?? 0)).slice(0, 8);
+
+  async function handleApproval(id, action) {
+    const token = localStorage.getItem("soar_token");
+    if (!token) { alert("Please log in to perform this action"); return; }
+    try {
+      const res = await fetch(`${API}/approvals/${id}/${action}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.detail || "Action failed"); return; }
+      loadData();
+    } catch (e) { alert("Could not reach server"); }
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+      {/* KPI row */}
       <div style={{ display: "flex", gap: 14 }}>
-        <KpiCard label="Total alerts" value="128" trend="12%" trendUp />
-        <KpiCard label="High risk alerts" value="23" trend="15%" trendUp accent="var(--color-critical)" />
-        <KpiCard label="Open cases" value="12" trend="4%" trendUp={false} accent="var(--color-high)" />
-        <KpiCard label="Closed cases" value="104" trend="18%" trendUp accent="var(--color-low)" />
-        <KpiCard label="MTTR (avg)" value="4.2s" trend="35%" trendUp={false} accent="var(--accent-purple)" />
+        <KpiCard label="Total alerts"     value={stats?.total_alerts ?? "—"} />
+        <KpiCard label="High risk alerts" value={stats?.high_risk_alerts ?? "—"} accent="var(--color-critical)" />
+        <KpiCard label="Open cases"       value={stats?.open_cases ?? "—"}  accent="var(--color-high)" />
+        <KpiCard label="Closed cases"     value={stats?.closed_cases ?? "—"} accent="var(--color-low)" />
+        <KpiCard label="MTTR (avg)"       value={stats ? `${stats.mttr}s` : "—"} accent="var(--accent-purple)" />
       </div>
 
+      {/* Charts row */}
       <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr", gap: 16 }}>
         <CardShell title="Alerts over time">
           <ResponsiveContainer width="100%" height={170}>
@@ -119,11 +147,16 @@ export default function DashboardPage() {
 
         <CardShell title="Top attacking countries">
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {topCountries.length === 0 && (
+              <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", padding: "20px 0" }}>
+                No alerts yet
+              </div>
+            )}
             {topCountries.map((c) => {
-              const max = Math.max(...topCountries.map((x) => x.count));
+              const max = Math.max(...topCountries.map(x => x.count));
               return (
                 <div key={c.name} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 12, width: 95, color: "var(--text-secondary)" }}>{c.name}</span>
+                  <span style={{ fontSize: 12, width: 100, color: "var(--text-secondary)" }}>{c.name}</span>
                   <div style={{ flex: 1, height: 6, background: "var(--border)", borderRadius: 3 }}>
                     <div style={{ width: `${(c.count / max) * 100}%`, height: "100%", background: "var(--accent-purple)", borderRadius: 3 }} />
                   </div>
@@ -139,20 +172,18 @@ export default function DashboardPage() {
             <div style={{ position: "relative", width: 110, height: 110 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={riskDistribution} dataKey="value" innerRadius={36} outerRadius={52} startAngle={90} endAngle={-270}>
-                    {riskDistribution.map((d) => (
-                      <Cell key={d.name} fill={d.color} stroke="none" />
-                    ))}
+                  <Pie data={riskDistribution.filter(d => d.value > 0)} dataKey="value" innerRadius={36} outerRadius={52} startAngle={90} endAngle={-270}>
+                    {riskDistribution.map(d => <Cell key={d.name} fill={d.color} stroke="none" />)}
                   </Pie>
                 </PieChart>
               </ResponsiveContainer>
               <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center" }}>
-                <div style={{ fontSize: 18, fontWeight: 600 }}>128</div>
+                <div style={{ fontSize: 18, fontWeight: 600 }}>{stats?.total_alerts ?? 0}</div>
                 <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Total</div>
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {riskDistribution.map((d) => (
+              {riskDistribution.map(d => (
                 <div key={d.name} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                   <span style={{ width: 8, height: 8, borderRadius: "50%", background: d.color }} />
                   <span style={{ color: "var(--text-secondary)" }}>{d.name}</span>
@@ -164,122 +195,135 @@ export default function DashboardPage() {
         </CardShell>
       </div>
 
+      {/* Recent incidents + MITRE timeline */}
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16 }}>
-        <CardShell
-          title="Recent incidents"
-          action={<button style={{ background: "none", border: "none", color: "var(--accent-purple)", fontSize: 12 }}>View all</button>}
-        >
+        <CardShell title="Recent incidents">
           <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ color: "var(--text-muted)", textAlign: "left" }}>
                 <th style={{ paddingBottom: 8, fontWeight: 500 }}>ID</th>
                 <th style={{ paddingBottom: 8, fontWeight: 500 }}>Type</th>
-                <th style={{ paddingBottom: 8, fontWeight: 500 }}>Source</th>
+                <th style={{ paddingBottom: 8, fontWeight: 500 }}>Source IP</th>
                 <th style={{ paddingBottom: 8, fontWeight: 500 }}>Risk</th>
+                <th style={{ paddingBottom: 8, fontWeight: 500 }}>MITRE</th>
+                <th style={{ paddingBottom: 8, fontWeight: 500 }}>Action</th>
                 <th style={{ paddingBottom: 8, fontWeight: 500 }}>Status</th>
-                <th style={{ paddingBottom: 8, fontWeight: 500 }}>Updated</th>
               </tr>
             </thead>
             <tbody>
-              {recentIncidents.map((i) => (
-                <tr key={i.id} style={{ borderTop: "1px solid var(--border)" }}>
-                  <td style={{ padding: "8px 0", color: "var(--accent-purple)" }}>{i.id}</td>
-                  <td style={{ padding: "8px 0" }}>{i.type}</td>
-                  <td style={{ padding: "8px 0", color: "var(--text-secondary)" }}>{i.source}</td>
+              {recentAlerts.length === 0 && (
+                <tr><td colSpan={7} style={{ padding: "20px 0", color: "var(--text-muted)", textAlign: "center" }}>No alerts yet — send one to POST /alerts</td></tr>
+              )}
+              {recentAlerts.map(a => (
+                <tr key={a.id} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "8px 0", color: "var(--accent-purple)" }}>#{a.id}</td>
+                  <td style={{ padding: "8px 0" }}>{a.alert_type}</td>
+                  <td style={{ padding: "8px 0", color: "var(--text-secondary)" }}>{a.source_ip}</td>
                   <td style={{ padding: "8px 0" }}>
-                    <span style={{ color: riskColor(i.risk), fontWeight: 600 }}>{i.risk}</span>
+                    <span style={{ color: riskColor(a.risk_score), fontWeight: 600 }}>{a.risk_score}</span>
                   </td>
                   <td style={{ padding: "8px 0" }}>
-                    <span style={{ ...statusBadgeStyle(i.status), padding: "3px 8px", borderRadius: 5, fontSize: 11 }}>
-                      {i.status}
-                    </span>
+                    {a.mitre_technique_id ? (
+                      <a href={`https://attack.mitre.org/techniques/${a.mitre_technique_id}/`} target="_blank" rel="noreferrer"
+                        style={{ color: "var(--accent-purple)", fontFamily: "monospace", fontSize: 11, textDecoration: "none" }}>
+                        {a.mitre_technique_id} ↗
+                      </a>
+                    ) : "—"}
                   </td>
-                  <td style={{ padding: "8px 0", color: "var(--text-muted)" }}>{i.updated}</td>
+                  <td style={{ padding: "8px 0", fontSize: 11, color: "var(--text-secondary)" }}>{a.action}</td>
+                  <td style={{ padding: "8px 0" }}>
+                    <span style={{ ...statusBadgeStyle(a.status), padding: "3px 8px", borderRadius: 5, fontSize: 11 }}>{a.status}</span>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </CardShell>
 
-        <CardShell title="Incident timeline">
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {timeline.map((t, idx) => (
-              <div key={t.label} style={{ display: "flex", gap: 10 }}>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                  <span style={{ width: 16, height: 16, borderRadius: "50%", background: "var(--color-low)", flexShrink: 0 }} />
-                  {idx < timeline.length - 1 && (
-                    <span style={{ width: 1, flex: 1, background: "var(--border-light)", marginTop: 2 }} />
-                  )}
-                </div>
-                <div style={{ paddingBottom: 4 }}>
-                  <div style={{ fontSize: 12.5 }}>{t.label}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{t.time}</div>
-                </div>
+        <CardShell title="Incident timeline" action={<span style={{ fontSize: 11, color: "var(--text-muted)" }}>latest alert</span>}>
+          {recentAlerts.length === 0 ? (
+            <div style={{ color: "var(--text-muted)", fontSize: 12, padding: "20px 0", textAlign: "center" }}>No alerts yet</div>
+          ) : (() => {
+            const latest = recentAlerts[0];
+            const steps = [
+              { label: "Alert received", done: true },
+              { label: `Threat enrichment (VT + AbuseIPDB)`, done: true },
+              { label: `MITRE tagged: ${latest.mitre_technique_id || "—"} ${latest.mitre_tactic || ""}`, done: !!latest.mitre_technique_id },
+              { label: `Playbook executed: ${latest.action}`, done: true },
+              { label: latest.status === "Resolved" ? "Incident resolved" : "Awaiting resolution", done: latest.status === "Resolved" },
+            ];
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {steps.map((t, idx) => (
+                  <div key={t.label} style={{ display: "flex", gap: 10 }}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                      <span style={{ width: 16, height: 16, borderRadius: "50%", background: t.done ? "var(--color-low)" : "var(--border)", flexShrink: 0 }} />
+                      {idx < steps.length - 1 && <span style={{ width: 1, flex: 1, background: "var(--border-light)", marginTop: 2 }} />}
+                    </div>
+                    <div style={{ paddingBottom: 4 }}>
+                      <div style={{ fontSize: 12, color: t.done ? "var(--text-primary)" : "var(--text-muted)" }}>{t.label}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{latest.timestamp?.slice(11, 19) || ""}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            );
+          })()}
         </CardShell>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
-        <CardShell
-          title="Active playbook"
-          action={
-            <span style={{ background: "var(--color-success-bg)", color: "var(--color-low)", fontSize: 11, padding: "3px 8px", borderRadius: 5 }}>
-              Running
-            </span>
-          }
-        >
-          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
-            High risk - auto containment
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            {["Collect IOC", "Threat intel", "Check reputation", "Isolate host", "Block IP", "Notify analyst"].map((s, idx) => (
-              <div key={s} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1 }}>
-                <span style={{ width: 22, height: 22, borderRadius: "50%", background: idx < 3 ? "var(--color-low)" : "var(--border)", marginBottom: 6 }} />
-                <span style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "center" }}>{s}</span>
-              </div>
-            ))}
-          </div>
+      {/* Pending approvals + Threat intel */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <CardShell title="Pending approvals">
+          {approvals.length === 0 ? (
+            <div style={{ color: "var(--text-muted)", fontSize: 12, padding: "10px 0" }}>
+              {localStorage.getItem("soar_token") ? "No pending approvals right now." : "Log in to view pending approvals."}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {approvals.map(a => (
+                <div key={a.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ fontSize: 12.5 }}>{a.action_type} → {a.target}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Alert #{a.alert_id}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 11, color: "var(--color-high)" }}>High risk</span>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => handleApproval(a.id, "approve")}
+                        style={{ background: "var(--color-high)", color: "#1a1300", border: "none", borderRadius: 5, fontSize: 11, padding: "4px 10px", cursor: "pointer" }}>
+                        Approve
+                      </button>
+                      <button onClick={() => handleApproval(a.id, "reject")}
+                        style={{ background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border-light)", borderRadius: 5, fontSize: 11, padding: "4px 10px", cursor: "pointer" }}>
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </CardShell>
 
-        <CardShell title="Threat intelligence (latest)">
+        <CardShell title="Threat intelligence sources">
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
-              { name: "VirusTotal", stat: "265M+ signatures" },
-              { name: "AbuseIPDB", stat: "12M+ reports" },
-              { name: "AlienVault OTX", stat: "18M+ pulses" },
-              { name: "Cisco Talos", stat: "1.2M+ intelligence" },
-            ].map((s) => (
-              <div key={s.name} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5 }}>
-                <span>{s.name}</span>
+              { name: "AbuseIPDB", stat: "IP reputation scoring", active: true },
+              { name: "VirusTotal", stat: "Multi-vendor threat analysis", active: true },
+              { name: "IP-API", stat: "Geolocation enrichment", active: true },
+              { name: "MITRE ATT&CK", stat: "Technique & tactic mapping", active: true },
+            ].map(s => (
+              <div key={s.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12.5 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: s.active ? "var(--color-low)" : "var(--border)" }} />
+                  {s.name}
+                </div>
                 <span style={{ color: "var(--text-muted)" }}>{s.stat}</span>
               </div>
             ))}
           </div>
         </CardShell>
-
-        <CardShell title="Pending approvals">
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {pendingApprovals.map((a) => (
-              <div key={a.title} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <div style={{ fontSize: 12.5 }}>{a.title}</div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 11, color: "var(--color-high)" }}>{a.risk}</span>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button style={{ background: "var(--color-high)", color: "#1a1300", border: "none", borderRadius: 5, fontSize: 11, padding: "4px 10px" }}>
-                      Approve
-                    </button>
-                    <button style={{ background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border-light)", borderRadius: 5, fontSize: 11, padding: "4px 10px" }}>
-                      Reject
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardShell>
       </div>
+
     </div>
   );
 }

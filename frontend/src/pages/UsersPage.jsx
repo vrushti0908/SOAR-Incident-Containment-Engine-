@@ -1,11 +1,12 @@
 import CardShell from "../components/CardShell";
 
 const users = [
-  { name: "Bob", email: "bob@infotact.in", role: "Senior Analyst", status: "Active", lastActive: "Now" },
-  { name: "Vrushti", email: "vrushti@infotact.in", role: "Backend Lead", status: "Active", lastActive: "5 min ago" },
-  { name: "Ushvi", email: "ushvi@infotact.in", role: "Threat Intel Engineer", status: "Active", lastActive: "Now" },
-  { name: "Samruddhi", email: "samruddhi@infotact.in", role: "Automation Engineer", status: "Active", lastActive: "1 hour ago" },
-  { name: "Riya", email: "riya@infotact.in", role: "Frontend & Security", status: "Active", lastActive: "20 min ago" },
+
+  { name: "Bob", email: "bob@infotact.in", role: "Senior Analyst", status: "Active"},
+  { name: "Vrushti", email: "vrushti@infotact.in", role: "Backend Lead", status: "Active"},
+  { name: "Ushvi", email: "ushvi@infotact.in", role: "Threat Intel Engineer", status: "Active",},
+  { name: "Samruddhi", email: "samruddhi@infotact.in", role: "Automation Engineer", status: "Active"},
+  { name: "Riya", email: "riya@infotact.in", role: "Frontend & Security", status: "Active"},
 ];
 
 function roleColor(role) {
@@ -13,6 +14,12 @@ function roleColor(role) {
   if (role.includes("Backend")) return "var(--color-high)";
   if (role.includes("Threat")) return "var(--color-low)";
   if (role.includes("Automation")) return "var(--color-medium)";
+
+  
+  
+
+
+  
   return "#5fa8e0";
 }
 
@@ -61,6 +68,8 @@ export default function UsersPage() {
                   </span>
                 </td>
                 <td style={{ padding: "10px 0", color: "var(--text-muted)" }}>{u.lastActive}</td>
+               
+
               </tr>
             ))}
           </tbody>
