@@ -132,65 +132,10 @@ This preserves the sub-5-second decision time (the core KPI) while adding a huma
 | Frontend | React 18, Vite, React Router v6, Recharts, Lucide |
 | MITRE ATT&CK | Inline mapping (T1110, T1059, T1566, T1486, T1046) |
 
----
 
-## Project Structure
 
-```
-SOAR-Incident-Containment-Engine/
-│
-├── app/
-│   ├── main.py                             # FastAPI app, all API endpoints
-│   ├── auth.py                             # JWT issuing, PBKDF2 hashing, role gating
-│   ├── mitre.py                            # MITRE ATT&CK technique mapping
-│   ├── schemas.py                          # Pydantic request/response models
-│   ├── approval_queue.py                   # Approval record creation
-│   ├── enrichment/
-│   │   ├── abuseipdb.py                    # AbuseIPDB IP reputation client
-│   │   ├── virustotal.py                   # VirusTotal multi-vendor scan client
-│   │   ├── geolocation.py                  # IP-API geolocation client
-│   │   └── threat_intelligence_service.py  # Unified enrichment pipeline
-│   ├── models/
-│   │   ├── alert.py                        # AlertDB table (all alert fields)
-│   │   ├── user.py                         # User table for RBAC
-│   │   ├── approval_model.py               # PendingApproval table
-│   │   ├── firewall_model.py               # BlockedIP table
-│   │   └── host_isolation_model.py         # IsolatedHost table
-│   ├── crud/
-│   │   └── alert_crud.py                   # Alert CRUD operations
-│   └── utils/
-│       └── normalization.py                # Alert field normalisation
-│
-├── engine.py                               # Playbook dispatcher (routes by alert_type)
-├── malware.py                              # Malware playbook logic
-├── bruteforce.py                           # Brute force playbook logic
-├── firewall.py                             # FirewallSimulator (IP blocking)
-├── host_isolation.py                       # HostIsolator (EDR simulation)
-├── logger.py                               # Action logger → action.log
-├── seed_user.py                            # Seeds 3 demo RBAC users on first run
-│
-├── frontend/
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── DashboardPage.jsx           # Live KPIs, charts, approval panel
-│   │   │   ├── AlertsPage.jsx              # Alert table with status filters
-│   │   │   ├── LoginPage.jsx               # JWT login form
-│   │   │   └── ...                         # 12 additional pages
-│   │   ├── components/
-│   │   │   ├── Sidebar.jsx                 # Role-aware navigation
-│   │   │   ├── TopBar.jsx                  # Auth state display + logout
-│   │   │   └── ...
-│   │   ├── hooks/
-│   │   │   └── useAuth.js                  # Auth state hook (isSeniorAnalyst etc.)
-│   │   └── App.jsx                         # Routes + PrivateRoute guard
-│   └── package.json
-│
-├── .env                                    # API keys — never committed
-├── requirements.txt
-└── README.md
-```
 
----
+
 
 ## Setup & Installation
 
