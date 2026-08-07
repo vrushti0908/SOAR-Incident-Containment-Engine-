@@ -1,7 +1,3 @@
-import CardShell from "../components/CardShell";
-
-
-
 import { useEffect, useState } from "react";
 import CardShell from "../components/CardShell";
 
@@ -128,13 +124,22 @@ export default function TimelinePage() {
                     marginTop: 2,
                   }}
                 >
+                  {e.description}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text-muted)",
+                    marginTop: 4,
+                  }}
+                >
                   {e.time}
                 </div>
               </div>
             </div>
           ))
         )}
-
       </div>
     </CardShell>
   );
